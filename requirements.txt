@@ -1,0 +1,5 @@
+litellm
+loguru
+openai
+python-dotenv
+httpx[socks]

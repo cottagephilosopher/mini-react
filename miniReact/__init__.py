@@ -7,7 +7,7 @@ miniReAct - 轻量级的 ReAct 框架实现
 from .module import Module
 from .tool import Tool
 from .signature import Signature, InputField, OutputField
-from .predict import Predict, ChainOfThought
+from .predict import Predict, ChainOfThought,PredictionCache
 from .react import ReAct
 from .lm import (
     chat, complete, 
@@ -26,6 +26,7 @@ __all__ = [
     "InputField",
     "OutputField",
     "Predict",
+    "PredictionCache",
     "ChainOfThought",
     "ReAct",
     # LM相关

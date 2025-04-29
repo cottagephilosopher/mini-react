@@ -177,23 +177,106 @@ class ReAct(Module):
             
             try:
                 # 调用选定的工具并记录结果
-                trajectory[f"observation_{idx}"] = self.tools[pred.next_tool_name](**pred.next_tool_args)
+                tool = self.tools[pred.next_tool_name]
+                # 验证工具参数
+                required_args = set(getattr(tool, "args", {}).keys())
+                provided_args = set(pred.next_tool_args.keys())
+                missing_args = required_args - provided_args
+                
+                if missing_args and pred.next_tool_name != "finish":
+                    # 如果缺少必要参数，记录错误并继续
+                    error_msg = f"工具 {pred.next_tool_name} 缺少必要参数: {missing_args}"
+                    logger.error(error_msg)
+                    trajectory[f"observation_{idx}"] = f"执行错误: {error_msg}"
+                else:
+                    # 调用工具
+                    trajectory[f"observation_{idx}"] = tool(**pred.next_tool_args)
             except Exception as err:
                 # 记录工具执行错误
                 trajectory[f"observation_{idx}"] = f"执行错误 {pred.next_tool_name}: {_fmt_exc(err)}"
             
             # 如果选择了finish工具，表示推理完成
             if pred.next_tool_name == "finish":
+                # 检查是否提供了输出字段参数
+                if pred.next_tool_args and len(pred.next_tool_args) > 0:
+                    # 使用提供的参数作为输出
+                    outputs = pred.next_tool_args
+                    # 确保所有必要的输出字段都存在
+                    for field_name in self.signature.output_fields:
+                        if field_name not in outputs:
+                            outputs[field_name] = ""
+                else:
+                    # 尝试从轨迹中提取结果
+                    outputs = {}
+                    
+                    # 首先检查轨迹中是否已经有结果和解释
+                    for field_name in self.signature.output_fields:
+                        if field_name in trajectory:
+                            outputs[field_name] = trajectory[field_name]
+                    
+                    # 如果没有找到结果，尝试从最后一次思考中提取
+                    if "result" in self.signature.output_fields and "result" not in outputs:
+                        # 尝试从最后一次思考中提取结果
+                        last_thought = trajectory.get(f"thought_{idx}", "")
+                        if "result is" in last_thought.lower():
+                            # 尝试提取结果数值
+                            import re
+                            result_match = re.search(r'result is (\d+\.?\d*)', last_thought.lower())
+                            if result_match:
+                                outputs["result"] = result_match.group(1)
+                            else:
+                                # 如果无法提取具体数值，尝试提取整个结果描述
+                                result_match = re.search(r'result is (.+?)\.', last_thought.lower())
+                                if result_match:
+                                    outputs["result"] = result_match.group(1).strip()
+                    
+                    # 如果没有找到解释，构建一个
+                    if "explanation" in self.signature.output_fields and "explanation" not in outputs:
+                        steps = []
+                        for i in range(idx):
+                            tool = trajectory.get(f"tool_name_{i}", "")
+                            args = trajectory.get(f"tool_args_{i}", {})
+                            obs = trajectory.get(f"observation_{i}", "")
+                            if tool and args:
+                                arg_str = ", ".join([f"{k}={v}" for k, v in args.items()])
+                                steps.append(f"{tool}({arg_str}) = {obs}")
+                        
+                        if steps:
+                            outputs["explanation"] = "计算步骤: " + "; ".join(steps)
+                
+                # 确保所有必要的输出字段都存在
+                for field_name in self.signature.output_fields:
+                    if field_name not in outputs:
+                        outputs[field_name] = f"无法生成{field_name}"
+                
+                # 将输出添加到轨迹中
+                for field_name, value in outputs.items():
+                    trajectory[field_name] = value
+                
                 break
         
         # 从最终轨迹中提取结果
         try:
-            extract = self._call_with_potential_trajectory_truncation(
-                self.extract, trajectory,lm=lm, **input_args
-            )
+            # 首先检查轨迹中是否已经有结果字段
+            outputs = {}
+            for field_name in self.signature.output_fields:
+                if field_name in trajectory:
+                    outputs[field_name] = trajectory[field_name]
             
+            # 如果所有必要的输出字段都已存在，直接返回结果
+            if all(field_name in outputs for field_name in self.signature.output_fields):
+                return Prediction(trajectory=trajectory, **outputs)
+            
+            # 否则，调用extract模块提取结果
+            extract = self._call_with_potential_trajectory_truncation(
+                self.extract, trajectory, lm=lm, **input_args
+            )
+            # 合并提取的结果和已有的结果
+            for field_name in self.signature.output_fields:
+                if field_name not in outputs and hasattr(extract, field_name):
+                    outputs[field_name] = getattr(extract, field_name)
             # 返回包含轨迹和输出的预测结果
-            return Prediction(trajectory=trajectory, **extract)
+            return Prediction(trajectory=trajectory, **outputs)
         except Exception as err:
             logger.error(f"提取结果时发生错误: {_fmt_exc(err)}")
             # 如果提取失败，创建一个包含默认值的结果
@@ -255,16 +338,29 @@ class ReAct(Module):
             截断后的轨迹字典
         """
         keys = list(trajectory.keys())
-        if len(keys) < 4:
-            # 每个工具调用有4个键：thought, tool_name, tool_args, observation
+        
+        # 计算轨迹中的工具调用次数
+        tool_calls = set()
+        for key in keys:
+            if key.startswith("thought_"):
+                idx = key.split("_")[1]
+                tool_calls.add(idx)
+        
+        # 如果只有一个工具调用，无法截断
+        if len(tool_calls) <= 1:
             raise ValueError(
                 "轨迹过长导致你的提示超出了上下文窗口，但轨迹不能被截断，因为它只包含一个工具调用。"
             )
         
-        # 删除最早的工具调用（前4个键）
-        for key in keys[:4]:
+        # 保留最近的工具调用，删除最早的一个
+        earliest_idx = min(tool_calls)
+        keys_to_remove = [k for k in keys if k.endswith(f"_{earliest_idx}")]
+        
+        # 删除最早的工具调用相关的键
+        for key in keys_to_remove:
             trajectory.pop(key)
         
+        logger.info(f"已截断轨迹，删除了工具调用 {earliest_idx}")
         return trajectory
 
 

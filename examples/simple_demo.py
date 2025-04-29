@@ -45,7 +45,7 @@ def main():
     tools = [add, subtract, multiply, divide]
     lm = MultiLLMHub().setup_azure_openai()
     # 创建ReAct智能体
-    agent = mr.ReAct(signature=calculator_signature, tools=tools,lm=lm)
+    agent = mr.ReAct(signature=calculator_signature, tools=tools,max_iters=10,lm=lm)
     
     print("欢迎使用计算器智能体！")
     print("输入数学表达式，如 '3 + 4 * 2'，或输入 'exit' 退出")

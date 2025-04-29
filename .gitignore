@@ -7,6 +7,8 @@
 insert_dialogues.sql
 update_dialogues.sql
 t.sql
+test_*.py
+.cache
 .vscode/
 # 忽略所有 .DS_Store 文件（macOS）
 .DS_Store

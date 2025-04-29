@@ -6,6 +6,9 @@ import os
 from typing import Any, Dict, Optional
 import json
 import re
+import hashlib
+import pickle
+from pathlib import Path
 
 # 导入我们的LM模块替代直接使用litellm
 from .lm import chat as lm_chat, complete as lm_complete
@@ -96,6 +99,74 @@ class ChatAdapter:
             {"role": "user", "content": content}
         ]
 
+class PredictionCache:
+    """简单的预测结果缓存"""
+    
+    def __init__(self, cache_dir: str = ".cache", max_entries: int = 100, enabled: bool = True):
+        """
+        初始化缓存
+        
+        参数:
+            cache_dir: 缓存目录
+            max_entries: 最大缓存条目数
+            enabled: 是否启用缓存
+        """
+        self.cache_dir = Path(cache_dir)
+        self.max_entries = max_entries
+        self.enabled = enabled
+        
+        if enabled:
+            self.cache_dir.mkdir(exist_ok=True, parents=True)
+    
+    def get_key(self, messages: list) -> str:
+        """生成缓存键"""
+        # 使用消息内容的哈希作为键
+        content = str(messages).encode('utf-8')
+        return hashlib.md5(content).hexdigest()
+    
+    def get(self, key: str) -> Optional[dict]:
+        """获取缓存项"""
+        if not self.enabled:
+            return None
+            
+        cache_file = self.cache_dir / f"{key}.pkl"
+        if cache_file.exists():
+            try:
+                with open(cache_file, 'rb') as f:
+                    return pickle.load(f)
+            except Exception as e:
+                logger.warning(f"读取缓存失败: {e}")
+        return None
+    
+    def set(self, key: str, value: dict):
+        """设置缓存项"""
+        if not self.enabled:
+            return
+            
+        cache_file = self.cache_dir / f"{key}.pkl"
+        try:
+            with open(cache_file, 'wb') as f:
+                pickle.dump(value, f)
+        except Exception as e:
+            logger.warning(f"写入缓存失败: {e}")
+        
+        # 清理过多的缓存文件
+        self._cleanup()
+    
+    def _cleanup(self):
+        """清理过多的缓存文件"""
+        cache_files = list(self.cache_dir.glob("*.pkl"))
+        if len(cache_files) > self.max_entries:
+            # 按修改时间排序，删除最旧的文件
+            cache_files.sort(key=lambda x: x.stat().st_mtime)
+            for file in cache_files[:len(cache_files) - self.max_entries]:
+                try:
+                    file.unlink()
+                except Exception:
+                    pass
+
+# 全局缓存实例
+prediction_cache = PredictionCache()
 
 class Predict(Module):
     """
@@ -107,6 +178,7 @@ class Predict(Module):
         signature: Any,
         model: Optional[str] = None,
         chat_adapter: Optional[ChatAdapter] = None,
+        use_cache: bool = True
     ):
         """
         初始化预测模块
@@ -120,6 +192,7 @@ class Predict(Module):
         self.signature = ensure_signature(signature)
         self.model = model  # 这里只保存模型名称，具体模型通过LM模块获取
         self.chat_adapter = chat_adapter or ChatAdapter()
+        self.use_cache = use_cache
     
     def forward(self, **kwargs: Any) -> Prediction:
         """
@@ -137,6 +210,14 @@ class Predict(Module):
         # 创建消息
         messages = self.chat_adapter.create_messages(self.signature, inputs)
         
+        # 检查缓存
+        if self.use_cache:
+            cache_key = prediction_cache.get_key(messages)
+            cached_response = prediction_cache.get(cache_key)
+            if cached_response:
+                logger.info("使用缓存的预测结果")
+                return Prediction(**cached_response)
+
         try:
             # 调用语言模型
             # 使用我们的LM模块替代直接调用litellm
@@ -152,38 +233,33 @@ class Predict(Module):
             # 解析回答，提取输出字段
             # 这里采用简单方法，假设模型按照要求返回了每个输出字段
             # 在实际应用中，可能需要更复杂的解析逻辑
+            # 解析回答，提取输出字段
             outputs = {}
             
-            # 处理JSON格式的工具参数
+            # 使用正则表达式提取字段
             for field_name in self.signature.output_fields:
-                # 寻找字段名在内容中的位置
-                field_marker = f"{field_name}:"
-                if field_marker in content:
-                    # 提取字段值
-                    start = content.find(field_marker) + len(field_marker)
-                    end = content.find("\n", start)
-                    if end == -1:  # 如果是最后一个字段
-                        end = len(content)
-                    
-                    value = content[start:end].strip()
+                # 使用更健壮的正则表达式匹配字段
+                field_pattern = rf"{re.escape(field_name)}:(.*?)(?:\n\w+:|$)"
+                field_match = re.search(field_pattern, content, re.DOTALL)
+                
+                if field_match:
+                    value = field_match.group(1).strip()
                     
                     # 特殊处理next_tool_args字段，确保它是一个字典
                     if field_name == "next_tool_args":
                         try:
-                            # 尝试解析为JSON对象
-                            if value.startswith('{') and value.endswith('}'):
+                            # 尝试从文本中提取JSON格式的参数
+                            json_pattern = r'\{.*\}'
+                            json_match = re.search(json_pattern, value, re.DOTALL)
+                            if json_match:
+                                json_str = json_match.group(0)
+                                value = json.loads(json_str)
+                            elif value.strip().startswith('{') and value.strip().endswith('}'):
                                 value = json.loads(value)
                             else:
-                                # 尝试从文本中提取JSON格式的参数
-                                json_pattern = r'\{.*\}'
-                                json_match = re.search(json_pattern, value, re.DOTALL)
-                                if json_match:
-                                    json_str = json_match.group(0)
-                                    value = json.loads(json_str)
-                                else:
-                                    # 如果无法提取JSON，创建一个空字典
-                                    logger.warning(f"无法解析工具参数: {value}")
-                                    value = {}
+                                # 如果无法提取JSON，创建一个空字典
+                                logger.warning(f"无法解析工具参数: {value}")
+                                value = {}
                         except json.JSONDecodeError:
                             logger.warning(f"无法解析工具参数为JSON: {value}")
                             value = {}
@@ -194,8 +270,8 @@ class Predict(Module):
                         value = value.strip()
                         # 如果工具名被其他字符包围，如'search'或[search]
                         if (value.startswith("'") and value.endswith("'")) or \
-                           (value.startswith('"') and value.endswith('"')) or \
-                           (value.startswith("[") and value.endswith("]")):
+                        (value.startswith('"') and value.endswith('"')) or \
+                        (value.startswith("[") and value.endswith("]")):
                             value = value[1:-1].strip()
                         # 尝试匹配一个单词（为工具名）
                         tool_name_match = re.search(r'\b([a-zA-Z_][a-zA-Z0-9_]*)\b', value)
@@ -212,7 +288,11 @@ class Predict(Module):
             if not outputs and self.signature.output_fields:
                 field_name = next(iter(self.signature.output_fields))
                 outputs[field_name] = content
-            
+                
+            # 缓存结果
+            if self.use_cache:
+                prediction_cache.set(cache_key, outputs)
+
             return Prediction(**outputs)
             
         except Exception as e:

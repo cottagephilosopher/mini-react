@@ -4,7 +4,8 @@
 import os
 import sys
 import logging
-
+# 设置语言模型配置
+from llm_hub import MultiLLMHub
 # 添加上级目录到模块搜索路径，以便导入miniReAct
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -42,9 +43,9 @@ calculator_signature = mr.Signature(
 def main():
     # 创建工具列表
     tools = [add, subtract, multiply, divide]
-    
+    lm = MultiLLMHub().setup_azure_openai()
     # 创建ReAct智能体
-    agent = mr.ReAct(calculator_signature, tools)
+    agent = mr.ReAct(signature=calculator_signature, tools=tools,lm=lm)
     
     print("欢迎使用计算器智能体！")
     print("输入数学表达式，如 '3 + 4 * 2'，或输入 'exit' 退出")
@@ -77,8 +78,7 @@ def main():
         print(f"处理表达式时出错: {e}")
             
 if __name__ == "__main__":
-    # 设置语言模型配置
-    from llm_hub import MultiLLMHub
-    lm = MultiLLMHub().setup_ollama("qwen3:8b")
+    
+    
     # 启动主程序
     main() 

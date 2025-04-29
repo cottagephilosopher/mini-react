@@ -66,29 +66,6 @@ predict_prompts = {
     next_tool_args: This is not JSON format
     next_tool_args: {"query": deep learning}""",
 
-    # System prompt template for field extraction tasks
-    "field_extraction_system_prompt": """You are an AI assistant responsible for extracting specified field information from input. Please provide output strictly according to the following format:
-
-    {output_fields}
-
-    Notes:
-    1. Each field must be on a separate line, in the format "field_name: value"
-    2. Do not add any additional explanations or descriptions
-    3. Ensure that each field has a corresponding value
-    4. Values should be concise and clear, without containing superfluous text
-
-    Correct example:
-    field_name: Product Name
-    field_type: String
-    description: The official name of the product
-    is_required: Yes
-
-    Incorrect example:
-    field_name: Product Name (this is a required field)
-    field_type: String type
-    description: This field is used to describe the official name of the product
-    is_required: Yes, this field is required""",
-
     # Chain of thought prompt
     "chain_of_thought": "Think step by step to solve this problem. First analyze all known information, then reason one step at a time."
 }

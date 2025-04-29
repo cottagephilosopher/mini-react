@@ -66,29 +66,6 @@ next_tool_name: search工具
 next_tool_args: 这不是JSON格式
 next_tool_args: {"query": 深度学习}""",
 
-    # 字段提取任务的系统提示模板
-    "field_extraction_system_prompt": """你是一个AI助手，负责从输入中提取指定的字段信息。请严格按照以下格式提供输出：
-
-{output_fields}
-
-注意事项：
-1. 每个字段必须单独成行，格式为"字段名: 值"
-2. 不要添加任何额外的解释或说明
-3. 确保每个字段都有对应的值
-4. 值应该简洁明了，不要包含多余的文字
-
-正确示例:
-field_name: 产品名称
-field_type: 字符串
-description: 产品的正式名称
-is_required: 是
-
-错误示例:
-field_name: 产品名称（这是一个必填字段）
-field_type: 字符串类型
-description: 这个字段用于描述产品的正式名称
-is_required: 是的，这个字段是必填的""",
-
     # 思维链提示
     "chain_of_thought": "思考逐步解决这个问题。首先分析所有已知信息，然后一步一步地推理。"
 }

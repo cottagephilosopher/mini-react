@@ -90,16 +90,7 @@ class ChatAdapter:
         content = self.format_user_message_content(signature, inputs)
         
         # 检查是否需要添加系统提示
-        if "next_tool_args" in signature.output_fields:
-            # 这是ReAct框架的请求，添加系统提示以指导正确的格式
-            system_content = predict_prompts["react_system_prompt"]
-        else:
-            # 这是普通字段提取任务，添加相应的系统提示
-            output_fields = ", ".join(signature.output_fields.keys())
-            system_content = predict_prompts["field_extraction_system_prompt"].format(
-                output_fields=output_fields
-            )
-        
+        system_content = predict_prompts["react_system_prompt"]
         return [
             {"role": "system", "content": system_content},
             {"role": "user", "content": content}

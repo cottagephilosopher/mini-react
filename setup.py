@@ -6,6 +6,9 @@ setup(
     packages=find_packages(),
     install_requires=[
         "litellm>=0.1.1",  # 用于处理大语言模型请求
+        "loguru",          # 日志处理
+        "python-dotenv",   # 环境变量管理
+        "httpx[socks]",    # HTTP客户端
     ],
     extras_require={
         "openai": ["openai>=1.0.0"],  # OpenAI官方客户端库
@@ -23,4 +26,4 @@ setup(
         "Operating System :: OS Independent",
     ],
     python_requires=">=3.11",
-) 
+)

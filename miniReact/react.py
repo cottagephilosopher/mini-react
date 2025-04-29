@@ -27,7 +27,7 @@ class ReAct(Module):
     它使用一系列工具来交互，并通过推理和观察来决定下一步行动。
     """
     
-    def __init__(self, signature: Any, tools: List[Callable], max_iters: int = 5):
+    def __init__(self, signature: Any, tools: List[Callable], max_iters: int = 5,lm=None):
         """
         初始化ReAct实例
         
@@ -39,6 +39,7 @@ class ReAct(Module):
         super().__init__()
         self.signature = signature = ensure_signature(signature)
         self.max_iters = max_iters
+        self.lm = lm
         
         # 将所有工具转换为Tool对象，并构建工具字典
         tools = [t if isinstance(t, Tool) else Tool(t) for t in tools]
@@ -88,7 +89,11 @@ class ReAct(Module):
         # 保存配置
         self.tools = tools
         self.react = Predict(react_signature)  # 用于每次迭代的预测
+        if lm:
+            self.react.lm = lm
         self.extract = ChainOfThought(fallback_signature)  # 用于从轨迹提取最终结果
+        if lm:
+            self.extract.lm = lm
     
     def _format_trajectory(self, trajectory: Dict[str, Any]) -> str:
         """
@@ -121,13 +126,15 @@ class ReAct(Module):
         
         # 获取最大迭代次数，可在调用时覆盖默认值
         max_iters = input_args.pop("max_iters", self.max_iters)
+
+        lm = input_args.pop("lm", self.lm)
         
         # 迭代执行推理-行动-观察循环
         for idx in range(max_iters):
             try:
                 # 调用react预测模块进行下一步预测
                 pred = self._call_with_potential_trajectory_truncation(
-                    self.react, trajectory, **input_args
+                    self.react, trajectory,lm=lm, **input_args
                 )
                 
                 # 确保pred包含所需的属性
@@ -182,7 +189,7 @@ class ReAct(Module):
         # 从最终轨迹中提取结果
         try:
             extract = self._call_with_potential_trajectory_truncation(
-                self.extract, trajectory, **input_args
+                self.extract, trajectory,lm=lm, **input_args
             )
             
             # 返回包含轨迹和输出的预测结果

@@ -8,7 +8,7 @@ import logging
 # 添加上级目录到模块搜索路径，以便导入miniReAct
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import miniRact as mr
+import miniReact as mr
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -103,9 +103,10 @@ qa_signature = mr.Signature(
 def main():
     # 创建工具列表
     tools = [search, read_document]
-    
+    from llm_hub import MultiLLMHub
+    lm = MultiLLMHub().setup_azure_openai()
     # 创建ReAct智能体
-    agent = mr.ReAct(qa_signature, tools,3)
+    agent = mr.ReAct(qa_signature, tools,3,lm=lm)
     
     print("欢迎使用AI知识问答智能体！")
     print("输入你的问题，或输入 'exit' 退出")
@@ -141,8 +142,7 @@ def main():
             
 if __name__ == "__main__":
     # 设置环境变量以指定要使用的模型
-    from llm_hub import MultiLLMHub
-    lm = MultiLLMHub().setup_azure_openai()
+    
     # 如果想查看执行过程中的思考和工具调用
     mr.enable_debug()
     # 启动主程序

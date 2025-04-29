@@ -55,12 +55,13 @@ class ReAct(Module):
                             for instruction in react_prompts["base_instructions"]]
         instr.extend(base_instructions)
         
-        # 添加"finish"工具用于标记任务完成
+        # 创建与输出字段对应的args
+        finish_args = {field_name: {"type": Any} for field_name in signature.output_fields}
         tools["finish"] = Tool(
             func=lambda: "Done",
             name="finish",
             desc=react_prompts["finish_tool_desc"].format(outputs=outputs),
-            args={},
+            args=finish_args,  # 提供输出字段作为参数
         )
         
         # 添加各个工具的描述
@@ -97,7 +98,7 @@ class ReAct(Module):
     
     def _format_trajectory(self, trajectory: Dict[str, Any]) -> str:
         """
-        格式化轨迹信息
+        格式化轨迹信息，确保格式清晰
         
         参数:
             trajectory: 轨迹字典
@@ -108,8 +109,30 @@ class ReAct(Module):
         # 创建一个临时的聊天适配器和签名
         from .predict import ChatAdapter
         adapter = ChatAdapter()
-        trajectory_signature = Signature({}, {}, f"{', '.join(trajectory.keys())} -> x")
-        return adapter.format_user_message_content(trajectory_signature, trajectory)
+        
+        # 处理特殊的错误反馈字段
+        error_feedbacks = {}
+        normal_fields = {}
+        
+        for key, value in trajectory.items():
+            if key.startswith("error_feedback_"):
+                error_feedbacks[key] = value
+            else:
+                normal_fields[key] = value
+        
+        # 首先格式化常规字段
+        trajectory_signature = Signature({}, {}, f"{', '.join(normal_fields.keys())} -> x")
+        formatted_trajectory = adapter.format_user_message_content(trajectory_signature, normal_fields)
+        
+        # 然后添加错误反馈（如果有的话）
+        if error_feedbacks:
+            feedback_parts = []
+            for key in sorted(error_feedbacks.keys()):
+                feedback_parts.append(error_feedbacks[key])
+            
+            formatted_trajectory += "\n\n" + "\n".join(feedback_parts)
+        
+        return formatted_trajectory
     
     def forward(self, **input_args: Any) -> Prediction:
         """
@@ -151,18 +174,36 @@ class ReAct(Module):
                 if pred.next_tool_name not in self.tools:
                     available_tools = list(self.tools.keys())
                     logger.error(f"工具名称'{pred.next_tool_name}'无效。可用工具: {available_tools}")
-                    # 尝试找到最接近的工具名称
-                    import difflib
-                    closest_match = difflib.get_close_matches(pred.next_tool_name, available_tools, n=1)
-                    if closest_match:
-                        logger.info(f"使用最接近的工具: {closest_match[0]}")
-                        pred.next_tool_name = closest_match[0]
-                    else:
-                        # 如果找不到接近的匹配，使用finish工具
-                        logger.info("找不到接近的工具，使用finish工具")
-                        pred.next_tool_name = "finish"
-                        pred.next_tool_args = {}
+                    
+                    # 最多重试3次
+                    max_retries = 3
+                    retry_attempt = 1
+                    
+                    while retry_attempt <= max_retries:
+                        # 尝试重新预测
+                        retry_pred = self._retry_prediction(
+                            self.react, trajectory, retry_attempt, input_args, lm
+                        )
                         
+                        # 检查新的预测结果是否有效
+                        if hasattr(retry_pred, "next_tool_name") and retry_pred.next_tool_name in self.tools:
+                            logger.info(f"重试成功：获得有效的工具名称 {retry_pred.next_tool_name}")
+                            pred = retry_pred  # 使用新的有效预测结果
+                            break
+                        
+                        retry_attempt += 1
+                    
+                    # 如果所有重试都失败，才回退到最接近匹配或finish工具
+                    if pred.next_tool_name not in self.tools:
+                        import difflib
+                        closest_match = difflib.get_close_matches(pred.next_tool_name, available_tools, n=1)
+                        if closest_match:
+                            logger.info(f"使用最接近的工具: {closest_match[0]}")
+                            pred.next_tool_name = closest_match[0]
+                        else:
+                            logger.info("找不到接近的工具，使用finish工具")
+                            pred.next_tool_name = "finish"
+                            pred.next_tool_args = {}
             except ValueError as err:
                 logger.warning(f"结束轨迹: 智能体未能选择有效工具: {_fmt_exc(err)}")
                 break
@@ -214,35 +255,32 @@ class ReAct(Module):
                         if field_name in trajectory:
                             outputs[field_name] = trajectory[field_name]
                     
-                    # 如果没有找到结果，尝试从最后一次思考中提取
-                    if "result" in self.signature.output_fields and "result" not in outputs:
-                        # 尝试从最后一次思考中提取结果
-                        last_thought = trajectory.get(f"thought_{idx}", "")
-                        if "result is" in last_thought.lower():
-                            # 尝试提取结果数值
-                            import re
-                            result_match = re.search(r'result is (\d+\.?\d*)', last_thought.lower())
-                            if result_match:
-                                outputs["result"] = result_match.group(1)
-                            else:
-                                # 如果无法提取具体数值，尝试提取整个结果描述
-                                result_match = re.search(r'result is (.+?)\.', last_thought.lower())
-                                if result_match:
-                                    outputs["result"] = result_match.group(1).strip()
-                    
-                    # 如果没有找到解释，构建一个
-                    if "explanation" in self.signature.output_fields and "explanation" not in outputs:
-                        steps = []
-                        for i in range(idx):
-                            tool = trajectory.get(f"tool_name_{i}", "")
-                            args = trajectory.get(f"tool_args_{i}", {})
-                            obs = trajectory.get(f"observation_{i}", "")
-                            if tool and args:
-                                arg_str = ", ".join([f"{k}={v}" for k, v in args.items()])
-                                steps.append(f"{tool}({arg_str}) = {obs}")
+                    # 如果输出字段未完全填充，尝试从最后一个工具调用的observation中获取结果
+                    if len(outputs) < len(self.signature.output_fields):
+                        # 找到最后一个observation
+                        last_obs_idx = -1
+                        last_obs = None
                         
-                        if steps:
-                            outputs["explanation"] = "计算步骤: " + "; ".join(steps)
+                        for i in range(idx-1, -1, -1):
+                            if f"observation_{i}" in trajectory:
+                                last_obs = trajectory[f"observation_{i}"]
+                                last_obs_idx = i
+                                last_tool = trajectory.get(f"tool_name_{i}", "")
+                                break
+                        
+                        # 如果有最后一个观察结果且输出字段只有一个，直接使用观察结果
+                        if last_obs is not None and len(self.signature.output_fields) == 1:
+                            field_name = next(iter(self.signature.output_fields))
+                            if field_name not in outputs:
+                                try:
+                                    # 尝试转换为数值(如果是计算任务)，否则保持原样
+                                    try:
+                                        outputs[field_name] = float(last_obs)
+                                    except (ValueError, TypeError):
+                                        outputs[field_name] = last_obs
+                                    logger.info(f"从最后一个观察中获取'{field_name}'：{outputs[field_name]}")
+                                except Exception as e:
+                                    logger.error(f"处理最后一个观察时出错：{e}")
                 
                 # 确保所有必要的输出字段都存在
                 for field_name in self.signature.output_fields:
@@ -362,6 +400,44 @@ class ReAct(Module):
         
         logger.info(f"已截断轨迹，删除了工具调用 {earliest_idx}")
         return trajectory
+
+    def _retry_prediction(self, react_predictor, trajectory, attempt, input_args, lm=None):
+        """
+        当检测到格式问题时，尝试重新发起预测
+        
+        参数:
+            react_predictor: Predict对象
+            trajectory: 当前轨迹
+            attempt: 当前尝试次数
+            input_args: 输入参数
+            lm: 语言模型
+            
+        返回:
+            重新预测的结果
+        """
+        # 构建新的提示，包含错误反馈
+        retry_trajectory = dict(trajectory)
+        
+        # 添加错误反馈到轨迹中
+        retry_trajectory[f"error_feedback_{attempt}"] = """
+错误：您的输出格式不正确。请严格按照以下格式输出：
+
+next_thought: 您的思考过程（只在这一行）
+
+next_tool_name: 工具名称（只写工具名，不要包含其他文本）
+
+next_tool_args: {"参数名": "参数值"}
+
+请注意每个字段必须单独成行，不要混合字段内容。
+"""
+        
+        # 重新调用预测
+        logger.info(f"尝试重新预测 (第{attempt}次尝试)")
+        return react_predictor(
+            **input_args,
+            trajectory=self._format_trajectory(retry_trajectory),
+            lm=lm
+        )
 
 
 def _fmt_exc(err: BaseException, *, limit: int = 5) -> str:

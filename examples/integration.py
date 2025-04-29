@@ -4,7 +4,7 @@
 import os
 import sys
 from pathlib import Path
-from examples.llm_hub import MultiLLMHub
+from llm_hub import MultiLLMHub
 
 # 添加项目根目录到模块搜索路径
 # sys.path.append(str(Path(__file__).parent.parent))
@@ -53,8 +53,8 @@ def test_calculator_agent():
     )
     
     # 测试简单表达式
-    result = agent(expression="3 + 4 * 2")
-    print(f"表达式: 3 + 4 * 2")
+    result = agent(expression="3 + 9 * 2 - 4")
+    print(f"表达式: 3 + 9 * 2 - 4")
     print(f"结果: {result.result}")
     print(f"解释: {result.explanation}")
     print("\n轨迹详情:")
@@ -68,20 +68,20 @@ def test_calculator_agent():
             print(f"观察: {result.trajectory.get(f'observation_{idx}', '')}")
     
     # 测试复杂表达式
-    result = agent(expression="9+3*(2/1+1)")
-    print(f"\n表达式: (10 + 5) * 3 / 2 - 7")
+    result = agent(expression="6+3*(2/1+1)")
+    print(f"\n表达式: 6+3*(2/1+1)")
     print(f"结果: {result.result}")
     print(f"解释: {result.explanation}")
     print("*"*30)
-    result = agent(expression="(10 + 5) * 3 / 2 - 7")
-    print(f"\n表达式: (10 + 5) * 3 / 2 - 7")
+    result = agent(expression="(10 + 2) * 3 / 2 - 5")
+    print(f"\n表达式: (10 + 2) * 3 / 2 - 5")
     print(f"结果: {result.result}")
     print(f"解释: {result.explanation}")
     
 
 if __name__ == "__main__":
     # 启用调试模式
-    mr.enable_debug()
+    # mr.enable_debug()
     
     # 运行测试
     test_calculator_agent()

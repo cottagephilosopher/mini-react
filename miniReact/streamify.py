@@ -31,9 +31,9 @@ class ThoughtResponse(StreamResponse):
     def __str__(self):
         return f"思考 #{self.index}: {self.thought}"
     
-    def message(self):
+    def message(self,type:str="reasoning"):
         return json.dumps({
-                "type": "reasoning",
+                "type": type,
                 "content": self.thought 
             }, ensure_ascii=False) + "\n"
 

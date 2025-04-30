@@ -34,7 +34,7 @@ class ThoughtResponse(StreamResponse):
     def message(self,type:str="reasoning"):
         return json.dumps({
                 "type": type,
-                "content": self.thought 
+                "content": self.thought+"\n\n" 
             }, ensure_ascii=False) + "\n"
 
 
@@ -53,7 +53,7 @@ class ToolCallResponse(StreamResponse):
     def message(self,type:str="status"):
         return json.dumps({
                 "type": type,
-                "content": f"Step {self.index+1} :Using tools: {self.tool_name}"
+                "content": f"Step {self.index+1} :Using tools: {self.tool_name}\n\n"
             }, ensure_ascii=False) + "\n"
 
 
@@ -71,7 +71,7 @@ class ObservationResponse(StreamResponse):
     def message(self,type:str="status"):
         return json.dumps({
                 "type": type,
-                "content": f"Observing step {self.index+1} Return: {self.observation}"
+                "content": f"Observing step {self.index+1} Return: {self.observation}\n\n"
             }, ensure_ascii=False) + "\n"
 
 

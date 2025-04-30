@@ -86,7 +86,7 @@ class FinishResponse(StreamResponse):
         return f"完成: {json.dumps(self.outputs, ensure_ascii=False)}"
 
     def message(self,output_field:str=None):
-        if output_fields is not None:
+        if output_field is not None:
             output = self.outputs.get(output_field, "")
         else:
             output = json.dumps(self.outputs, ensure_ascii=False)

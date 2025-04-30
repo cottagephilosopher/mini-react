@@ -2,6 +2,7 @@
 流式返回模块，为ReAct框架提供流式输出功能
 """
 import asyncio
+from sqlite3 import connect
 from typing import Any, AsyncGenerator, Dict, List, Optional, Type, Union, Callable, Awaitable
 import inspect
 from pathlib import Path
@@ -51,9 +52,12 @@ class ToolCallResponse(StreamResponse):
         return f"调用工具 #{self.index}: {self.tool_name}({json.dumps(self.tool_args, ensure_ascii=False)})"
 
     def message(self,type:str="status"):
+        content =f"Step {self.index+1} :Using tools: {self.tool_name}\n\n"
+        if self.tool_name == "finish":
+            content = f"Step {self.index+1} :The LLM is inferring conclusions \n\n"
         return json.dumps({
                 "type": type,
-                "content": f"Step {self.index+1} :Using tools: {self.tool_name}\n\n"
+                "content":content
             }, ensure_ascii=False) + "\n"
 
 
@@ -69,9 +73,11 @@ class ObservationResponse(StreamResponse):
         return f"观察 #{self.index}: {self.observation}"
 
     def message(self,type:str="status"):
+        if self.observation == "Done":
+            type = "status"
         return json.dumps({
                 "type": type,
-                "content": f"Observing step {self.index+1} Return: {self.observation}\n\n"
+                "content":f"Observing step {self.index+1} Return: {self.observation}\n\n"
             }, ensure_ascii=False) + "\n"
 
 

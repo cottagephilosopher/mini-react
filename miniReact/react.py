@@ -58,7 +58,7 @@ class ReAct(Module):
         # 创建与输出字段对应的args
         finish_args = {field_name: {"type": Any} for field_name in signature.output_fields}
         tools["finish"] = Tool(
-            func=lambda: "Done",
+            func=lambda **kwargs: "Done",
             name="finish",
             desc=react_prompts["finish_tool_desc"].format(outputs=outputs),
             args=finish_args,  # 提供输出字段作为参数

@@ -30,6 +30,12 @@ class ThoughtResponse(StreamResponse):
         
     def __str__(self):
         return f"思考 #{self.index}: {self.thought}"
+    
+    def message(self):
+        return json.dumps({
+                "type": "reasoning",
+                "content": self.thought 
+            }, ensure_ascii=False) + "\n"
 
 
 class ToolCallResponse(StreamResponse):
@@ -44,6 +50,12 @@ class ToolCallResponse(StreamResponse):
     def __str__(self):
         return f"调用工具 #{self.index}: {self.tool_name}({json.dumps(self.tool_args, ensure_ascii=False)})"
 
+    def message(self):
+        return json.dumps({
+                "type": "status",
+                "content": f"调用工具 #{self.index}: {self.tool_name}"
+            }, ensure_ascii=False) + "\n"
+
 
 class ObservationResponse(StreamResponse):
     """
@@ -56,6 +68,12 @@ class ObservationResponse(StreamResponse):
     def __str__(self):
         return f"观察 #{self.index}: {self.observation}"
 
+    def message(self):
+        return json.dumps({
+                "type": "status",
+                "content": f"观察到 #{self.index}: {self.observation}"
+            }, ensure_ascii=False) + "\n"
+
 
 class FinishResponse(StreamResponse):
     """
@@ -66,6 +84,16 @@ class FinishResponse(StreamResponse):
         
     def __str__(self):
         return f"完成: {json.dumps(self.outputs, ensure_ascii=False)}"
+
+    def message(self,output_field:str=None):
+        if output_fields is not None:
+            output = self.outputs.get(output_field, "")
+        else:
+            output = json.dumps(self.outputs, ensure_ascii=False)
+        return json.dumps({
+                "type": "content",
+                "content": output
+            }, ensure_ascii=False) + "\n"
 
 
 async def _asyncify(func: Callable, *args, **kwargs) -> Any:

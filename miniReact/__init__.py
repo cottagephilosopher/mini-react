@@ -18,6 +18,15 @@ from .lm import (
     setup_openrouter,
     setup_ollama
 )
+from .streamify import (
+    streamify, 
+    streaming_response,
+    StreamResponse,
+    ThoughtResponse,
+    ToolCallResponse,
+    ObservationResponse,
+    FinishResponse
+)
 
 __all__ = [
     "Module",
@@ -40,4 +49,12 @@ __all__ = [
     "LM",
     "setup_openrouter",
     "setup_ollama",
+    # 流式返回相关
+    "streamify",
+    "streaming_response",
+    "StreamResponse",
+    "ThoughtResponse",
+    "ToolCallResponse",
+    "ObservationResponse",
+    "FinishResponse",
 ] 

@@ -16,7 +16,8 @@ from .lm import (
     config as lm_config,
     LM,
     setup_openrouter,
-    setup_ollama
+    setup_ollama,
+    setup_openai
 )
 from .streamify import (
     streamify, 
@@ -49,6 +50,7 @@ __all__ = [
     "LM",
     "setup_openrouter",
     "setup_ollama",
+    "setup_openai",
     # 流式返回相关
     "streamify",
     "streaming_response",

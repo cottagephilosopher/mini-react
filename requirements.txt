@@ -1,5 +1,4 @@
-litellm
+httpx
 loguru
 openai
 python-dotenv
-httpx[socks]

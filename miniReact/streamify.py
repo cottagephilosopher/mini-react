@@ -177,10 +177,21 @@ def streamify(react_instance: ReAct) -> Callable[..., AsyncGenerator]:
                     # 迭代执行推理-行动-观察循环
                     for idx in range(max_iters):
                         try:
+                            logger.debug(f"第{idx}轮开始，调用_call_with_potential_trajectory_truncation")
+                            logger.debug(f"传递的lm: {lm.model_name if lm else '无'} @ {lm.api_base if lm else '无'}")
+                            
                             # 调用react预测模块进行下一步预测
                             pred = react_instance._call_with_potential_trajectory_truncation(
                                 react_instance.react, trajectory, lm=lm, **forward_kwargs
                             )
+                            
+                            logger.debug(f"_call_with_potential_trajectory_truncation成功完成")
+                            logger.debug(f"pred类型: {type(pred)}")
+                            logger.debug(f"pred属性: {dir(pred)}")
+                            
+                            # 检查pred是否有错误
+                            if hasattr(pred, 'next_thought') and "qwen2.5:7b" in str(pred.next_thought):
+                                logger.error(f"发现qwen2.5:7b错误在next_thought中: {pred.next_thought}")
                             
                             # 添加调试信息
                             logger.debug(f"思考: {pred.next_thought}")

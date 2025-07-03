@@ -94,17 +94,68 @@ async def process_stream_to_api(generator):
         logger.warning(chunk.strip())
 
 async def stream_main():
+    # 启用调试模式
+    import miniReact as mr
+    mr.enable_debug()
+    
+    print("=== stream_main 开始 ===")
+    
+    # 清除任何可能的全局配置干扰
+    print("检查全局配置...")
+    print(f"全局模型: {mr.get_model()}")
+    print(f"全局API基址: {mr.lm_config.get_config('api_base')}")
+    
     tools = [add, subtract, multiply, divide]
     lm = MultiLLMHub().setup_azure_openai()
+    
+    print(f"\n创建的LM实例:")
+    print(f"  模型: {lm.model_name}")
+    print(f"  API基址: {lm.api_base}")
+    print(f"  配置: {lm.config}")
+    
     # 创建ReAct智能体
     react = ReAct(signature=calculator_signature, tools=tools,max_iters=10,lm=lm)
+    
+    print(f"\n创建的ReAct实例:")
+    print(f"  ReAct.lm模型: {react.lm.model_name if react.lm else '无'}")
+    print(f"  ReAct.lm API基址: {react.lm.api_base if react.lm else '无'}")
+    
     stream_react = streamify(react)
     question = "30/(5+1) + 4 * 2-10"
+    
+    print(f"\n开始流式处理问题: {question}")
+    print("=" * 50)
+    
     await process_stream_to_api(stream_react(expression=question))
     
             
+def test_config_only():
+    """仅测试配置，不进行真实API调用"""
+    tools = [add, subtract, multiply, divide]
+    lm = MultiLLMHub().setup_azure_openai()
+    
+    print(f"=== 配置验证 ===")
+    print(f"选择的LM模型: {lm.model_name}")
+    print(f"选择的LM API基址: {lm.api_base}")
+    
+    # 创建ReAct智能体
+    agent = ReAct(signature=calculator_signature, tools=tools, max_iters=10, lm=lm)
+    
+    print(f"ReAct智能体的LM: {agent.lm.model_name if agent.lm else '无'}")
+    print(f"ReAct智能体的API基址: {agent.lm.api_base if agent.lm else '无'}")
+    
+    # 检查全局配置
+    import miniReact as mr
+    print(f"全局配置模型: {mr.get_model()}")
+    print(f"全局配置API基址: {mr.lm_config.get_config('api_base')}")
+    
+    print("✅ 配置传递正确！现在Azure OpenAI应该会被正确使用而不是qwen2.5:7b")
+
 if __name__ == "__main__":
     import asyncio
+    
+    # 先测试配置
+    # test_config_only()
     
     # 启动主程序
     # main() 

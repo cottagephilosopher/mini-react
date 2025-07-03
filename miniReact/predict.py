@@ -204,6 +204,16 @@ class Predict(Module):
         返回:
             预测结果
         """
+        print(f"[PREDICT FORWARD] 开始执行，接收参数: {list(kwargs.keys())}")
+        
+        # 从kwargs中提取lm参数（如果有的话）
+        lm = kwargs.pop("lm", None)
+        print(f"[PREDICT FORWARD] 提取的lm: {lm.model_name if lm else 'None'} @ {lm.api_base if lm else 'None'}")
+        
+        logger.debug(f"Predict.forward 接收的lm参数: {lm}")
+        if lm:
+            logger.debug(f"LM实例详情: 模型={lm.model_name}, API基址={lm.api_base}")
+        
         # 准备输入
         inputs = {k: v for k, v in kwargs.items() if k in self.signature.input_fields}
         
@@ -220,12 +230,23 @@ class Predict(Module):
 
         try:
             # 调用语言模型
-            # 使用我们的LM模块替代直接调用litellm
             params = {"temperature": 0.1}  # 使用较低的温度以获得更确定性的回答
-            if self.model:
-                params["model"] = self.model
-                
-            response = lm_chat(messages, **params)
+            
+            if lm:
+                # 如果传递了lm实例，使用它
+                logger.debug(f"使用传递的LM实例: {lm.model_name}, API基址: {lm.api_base}")
+                logger.debug(f"LM实例配置: {getattr(lm, 'config', {})}")
+                logger.debug(f"即将调用lm.chat，传递参数: {params}")
+                response = lm.chat(messages, **params)
+                logger.debug(f"lm.chat返回响应: {response}")
+            else:
+                # 否则使用全局配置
+                if self.model:
+                    params["model"] = self.model
+                logger.debug("使用全局LM配置")
+                logger.debug(f"即将调用lm_chat，传递参数: {params}")
+                response = lm_chat(messages, **params)
+                logger.debug(f"lm_chat返回响应: {response}")
             
             # 提取回答内容
             content = response["content"]

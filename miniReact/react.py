@@ -4,14 +4,8 @@ ReAct模块，实现推理和行动框架的核心逻辑
 from loguru import logger
 from typing import Any, Callable, Dict, List, Literal, Optional
 
-# 导入litellm中的上下文窗口异常处理
-try:
-    from litellm import ContextWindowExceededError
-except ImportError:
-    # 如果无法导入，创建一个兼容的异常类
-    class ContextWindowExceededError(Exception):
-        """上下文窗口超出限制异常"""
-        pass
+# 导入上下文窗口异常处理
+from .lm import ContextWindowExceededError
 
 from .module import Module
 from .predict import ChainOfThought, Prediction, Predict
@@ -324,13 +318,14 @@ class ReAct(Module):
             
             return Prediction(trajectory=trajectory, **default_outputs)
     
-    def _call_with_potential_trajectory_truncation(self, module, trajectory, **input_args):
+    def _call_with_potential_trajectory_truncation(self, module, trajectory, lm=None, **input_args):
         """
         调用模块，当轨迹过长时进行截断处理
         
         参数:
             module: 要调用的模块
             trajectory: 当前轨迹
+            lm: 语言模型实例
             **input_args: 输入参数
             
         返回:
@@ -339,29 +334,51 @@ class ReAct(Module):
         # 尝试最多3次，如果遇到上下文长度超出，则截断轨迹
         for attempt in range(3):
             try:
-                return module(
+                logger.debug(f"_call_with_potential_trajectory_truncation attempt {attempt}: calling module {module}")
+                logger.debug(f"传递的参数: lm={lm.model_name if lm else 'None'}")
+                print(f"[REACT DEBUG] 即将调用模块: {module.__class__.__name__}")
+                print(f"[REACT DEBUG] 模块类型: {type(module)}")
+                print(f"[REACT DEBUG] 模块有forward方法: {hasattr(module, 'forward')}")
+                print(f"[REACT DEBUG] 传递的轨迹: {self._format_trajectory(trajectory)}")
+                
+                result = module(
                     **input_args,
                     trajectory=self._format_trajectory(trajectory),
+                    lm=lm,
                 )
+                print(f"[REACT DEBUG] 模块调用返回结果: {result}")
+                print(f"[REACT DEBUG] 结果类型: {type(result)}")
+                print(f"[REACT DEBUG] 结果内容: {dict(result) if hasattr(result, 'items') else str(result)}")
+                
+                logger.debug(f"模块调用成功返回: {type(result)}")
+                return result
             except ContextWindowExceededError:
                 logger.warning("轨迹超出上下文窗口限制，截断最早的工具调用信息。")
                 try:
                     trajectory = self.truncate_trajectory(trajectory)
                 except ValueError as e:
                     logger.error(f"无法截断轨迹: {e}")
-                    # 返回一个空的Prediction对象
+                    # 返回一个错误的Prediction对象
                     from .predict import Prediction
-                    return Prediction()
+                    return Prediction(next_thought=f"调用语言模型时出错: 无法截断轨迹: {e}", 
+                                    next_tool_name=f"调用语言模型时出错: 无法截断轨迹: {e}",
+                                    next_tool_args=f"调用语言模型时出错: 无法截断轨迹: {e}")
             except Exception as e:
                 logger.error(f"调用模块时发生错误: {e}")
-                # 如果是最后一次尝试，返回一个空的Prediction对象
+                import traceback
+                logger.error(f"完整异常信息: {traceback.format_exc()}")
+                # 如果是最后一次尝试，返回一个错误的Prediction对象
                 if attempt == 2:  # 最后一次尝试
                     from .predict import Prediction
-                    return Prediction()
+                    return Prediction(next_thought=f"调用语言模型时出错: {e}", 
+                                    next_tool_name=f"调用语言模型时出错: {e}",
+                                    next_tool_args=f"调用语言模型时出错: {e}")
         
-        # 如果所有尝试都失败，返回一个空的Prediction对象
+        # 如果所有尝试都失败，返回一个错误的Prediction对象
         from .predict import Prediction
-        return Prediction()
+        return Prediction(next_thought="调用语言模型时出错: 所有尝试都失败了", 
+                        next_tool_name="调用语言模型时出错: 所有尝试都失败了",
+                        next_tool_args="调用语言模型时出错: 所有尝试都失败了")
     
     def truncate_trajectory(self, trajectory: Dict[str, Any]) -> Dict[str, Any]:
         """

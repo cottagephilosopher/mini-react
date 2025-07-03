@@ -37,7 +37,7 @@ class MultiLLMHub:
     def setup_openrouter(self, 
                         api_key: str = None, 
                         model: str = None,
-                        api_base: str =None) -> mr.LM:
+                        api_base: str = None) -> mr.LM:
         """
         设置OpenRouter LLM
         
@@ -50,19 +50,19 @@ class MultiLLMHub:
             LM实例
         """
         if not api_key:
-            api_key = os.environ.get("OPENROUTE_API_KEY")
+            api_key = os.environ.get("OPENROUTER_API_KEY") or os.environ.get("OPENROUTE_API_KEY")
             if not api_key:
                 logger.warning("未提供OpenRouter API密钥，也未在环境变量中找到")
         if not api_base:
-            api_base = os.environ.get("OPENROUTE_BASE_URL", "https://openrouter.ai/api/v1")
+            api_base = os.environ.get("OPENROUTER_BASE_URL") or os.environ.get("OPENROUTE_BASE_URL", "https://openrouter.ai/api/v1/")
         if not model:
-            model = os.environ.get("OPENROUTE_MODEL_NAME", "qwen/qwq-32b:free")
+            model = os.environ.get("OPENROUTER_MODEL_NAME") or os.environ.get("OPENROUTE_MODEL_NAME", "qwen/qwq-32b-preview")
 
         logger.info(f"设置OpenRouter LLM，模型: {model}")
         
-        # 方法1：使用LM类初始化
+        # 直接使用模型名称，不添加前缀
         lm = mr.LM(
-            model,  # OpenRouter上可用的模型
+            model,
             api_base=api_base,
             api_key=api_key
         )
@@ -92,19 +92,15 @@ class MultiLLMHub:
             if not api_key:
                 logger.warning("未提供OpenAI API密钥，也未在环境变量中找到")
         if not api_base:
-            api_base = os.environ.get("OPENAI_BASE_URL")
-            if not api_base:
-                logger.warning("未提供OpenAI API基础URL，也未在环境变量中找到")
+            api_base = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1/")
         if not model:
-            model = os.environ.get("OPENAI_MODEL_NAME", "gpt-4o")
+            model = os.environ.get("OPENAI_MODEL_NAME", "gpt-3.5-turbo")
         
         logger.info(f"设置OpenAI LLM，模型: {model}")
         
-        # 使用标准前缀格式
-        model_name = f"openai/{model}" if not model.startswith("openai/") else model
-        
+        # 直接使用模型名称，标准OpenAI协议不需要前缀
         lm = mr.LM(
-            model_name,
+            model,
             api_base=api_base,
             api_key=api_key
         )
@@ -118,10 +114,10 @@ class MultiLLMHub:
                     model: str = None,
                     api_base: Optional[str] = None) -> mr.LM:
         """
-        设置阿里dashscope LLM
+        设置阿里云DashScope LLM（兼容OpenAI协议）
         
         参数:
-            api_key: OpenAI API密钥，如果为None则尝试从环境变量获取
+            api_key: DashScope API密钥，如果为None则尝试从环境变量获取
             model: 要使用的模型
             api_base: API基础URL，如果为None则使用默认值
             
@@ -130,23 +126,19 @@ class MultiLLMHub:
         """
         # 如果未提供API密钥，尝试从环境变量获取
         if api_key is None:
-            api_key = os.environ.get("ALI_API_KEY")
+            api_key = os.environ.get("DASHSCOPE_API_KEY") or os.environ.get("ALI_API_KEY")
             if not api_key:
-                logger.warning("未提供OpenAI API密钥，也未在环境变量中找到")
+                logger.warning("未提供DashScope API密钥，也未在环境变量中找到")
         if not api_base:
-            api_base = os.environ.get("ALI_BASE_URL")
-            if not api_base:
-                logger.warning("未提供OpenAI API基础URL，也未在环境变量中找到")
+            api_base = os.environ.get("DASHSCOPE_BASE_URL") or os.environ.get("ALI_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1/")
         if not model:
-            model = os.environ.get("ALI_MODEL_NAME", "qwen-max")
+            model = os.environ.get("DASHSCOPE_MODEL_NAME") or os.environ.get("ALI_MODEL_NAME", "qwen-turbo")
         
-        logger.info(f"设置Ali Dashscope LLM，模型: {model}")
+        logger.info(f"设置阿里云DashScope LLM，模型: {model}")
         
-        # 使用标准前缀格式
-        model_name = f"dashscope/{model}" if not model.startswith("dashscope/") else model
-        
+        # 直接使用模型名称，不添加前缀
         lm = mr.LM(
-            model_name,
+            model,
             api_base=api_base,
             api_key=api_key
         )
@@ -154,17 +146,20 @@ class MultiLLMHub:
         # 存储实例
         self.lm_instances["dashscope"] = lm
         return lm
+    
     def setup_azure_openai(self, 
-                          api_key: str  =  None, 
+                          api_key: str = None, 
                           api_base: str = None,
-                          deployment_name: str  = "gpt-4o",
+                          deployment_name: str = "gpt-4o",
                           api_version: str = "2024-05-01-preview") -> mr.LM:
         """
         设置Azure OpenAI LLM
         
+        注意：Azure OpenAI 使用不同的API格式，需要特殊处理
+        
         参数:
             api_key: Azure OpenAI API密钥
-            api_base: Azure OpenAI API基础URL
+            api_base: Azure OpenAI资源端点（如：https://your-resource.openai.azure.com）
             deployment_name: Azure部署名称
             api_version: API版本
             
@@ -182,14 +177,20 @@ class MultiLLMHub:
         if not deployment_name:
             deployment_name = os.environ.get("AZURE_MODEL_NAME", "gpt-4o")
 
+        # 构建正确的Azure OpenAI API端点
+        # Azure格式: https://{resource}.openai.azure.com/openai/deployments/{deployment}/chat/completions?api-version={version}
+        if api_base and not api_base.endswith('/'):
+            api_base += '/'
+        
+        azure_api_base = f"{api_base}openai/deployments/{deployment_name}/"
+        
         logger.info(f"设置Azure OpenAI LLM，部署: {deployment_name}")
+        logger.info(f"Azure API端点: {azure_api_base}")
         
-        # Azure OpenAI需要特殊的模型格式
-        model_name = f"azure/{deployment_name}"
-        
+        # 对于Azure，我们直接使用deployment_name作为模型名
         lm = mr.LM(
-            model_name,
-            api_base=api_base,
+            deployment_name,
+            api_base=azure_api_base,
             api_key=api_key,
             api_version=api_version
         )
@@ -199,7 +200,7 @@ class MultiLLMHub:
         return lm
     
     def setup_ollama(self, 
-                    model: str =None, 
+                    model: str = None, 
                     api_base: str = "http://localhost:11434") -> mr.LM:
         """
         设置Ollama本地LLM
@@ -211,22 +212,15 @@ class MultiLLMHub:
         返回:
             LM实例
         """
-        if  not model:
-            model = os.environ.get("OLLAMA_MODEL_NAME")
-            if not model:
-                logger.warning("未提供Ollama模型，也未在环境变量中找到")
+        if not model:
+            model = os.environ.get("OLLAMA_MODEL_NAME", "qwen3:8b")
 
         logger.info(f"设置Ollama LLM，模型: {model}")
         
-        # 确保模型名称格式正确
-        if not model.startswith("ollama/"):
-            model_name = f"ollama/{model}"
-        else:
-            model_name = model
-        
         try:
+            # Ollama兼容OpenAI协议，直接使用模型名称
             lm = mr.LM(
-                model_name,
+                model,
                 api_base=api_base,
                 api_key=""  # Ollama通常不需要API密钥
             )
@@ -239,6 +233,35 @@ class MultiLLMHub:
             logger.info("要使用Ollama，请先安装并运行Ollama服务")
             return None
     
+    def setup_custom_openai_compatible(self,
+                                     provider_name: str,
+                                     api_key: str,
+                                     api_base: str,
+                                     model: str) -> mr.LM:
+        """
+        设置自定义的兼容OpenAI协议的LLM提供商
+        
+        参数:
+            provider_name: 提供商名称（用于标识）
+            api_key: API密钥
+            api_base: API基础URL
+            model: 模型名称
+            
+        返回:
+            LM实例
+        """
+        logger.info(f"设置自定义OpenAI兼容提供商: {provider_name}，模型: {model}")
+        
+        lm = mr.LM(
+            model,
+            api_base=api_base,
+            api_key=api_key
+        )
+        
+        # 存储实例
+        self.lm_instances[provider_name.lower()] = lm
+        return lm
+    
     def check_llm(self, 
                 llm_type: str, 
                 prompt: str = "请用中文写一首关于人工智能的短诗", 
@@ -248,7 +271,7 @@ class MultiLLMHub:
         测试指定类型的LLM
         
         参数:
-            llm_type: LLM类型，如'openrouter', 'openai', 'azure', 'ollama','dashscope'
+            llm_type: LLM类型，如'openrouter', 'openai', 'azure', 'ollama', 'dashscope'
             prompt: 用于complete方法的提示
             chat_message: 用于chat方法的消息
             temperature: 温度参数
@@ -286,7 +309,7 @@ class MultiLLMHub:
         print(f"发送消息: {chat_message}")
         
         try:
-            response = lm.chat(messages)
+            response = lm.chat(messages, temperature=temperature)
             print("\n收到回复:", response["content"])
             results["chat"] = response
         except Exception as e:
@@ -326,3 +349,20 @@ class MultiLLMHub:
             all_results[llm_type] = results
         
         return all_results
+    
+    def list_available_providers(self):
+        """列出所有可用的提供商设置方法"""
+        providers = {
+            "openai": "setup_openai() - OpenAI官方API",
+            "openrouter": "setup_openrouter() - OpenRouter多模型平台", 
+            "dashscope": "setup_dashscope() - 阿里云DashScope",
+            "azure": "setup_azure_openai() - Azure OpenAI服务",
+            "ollama": "setup_ollama() - Ollama本地部署",
+            "custom": "setup_custom_openai_compatible() - 自定义OpenAI兼容提供商"
+        }
+        
+        print("支持的LLM提供商:")
+        for key, desc in providers.items():
+            print(f"  {key}: {desc}")
+        
+        return providers

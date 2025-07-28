@@ -294,8 +294,8 @@ class Predict(Module):
                         (value.startswith('"') and value.endswith('"')) or \
                         (value.startswith("[") and value.endswith("]")):
                             value = value[1:-1].strip()
-                        # 尝试匹配一个单词（为工具名）
-                        tool_name_match = re.search(r'\b([a-zA-Z_][a-zA-Z0-9_]*)\b', value)
+                        # 尝试匹配一个单词（为工具名，支持连字符）
+                        tool_name_match = re.search(r'\b([a-zA-Z_][a-zA-Z0-9_-]*)\b', value)
                         if tool_name_match:
                             value = tool_name_match.group(1)
                         logger.info(f"解析工具名称为: {value}")

@@ -215,7 +215,3 @@ MIT License
 
 这个 README 基于项目的实际代码结构和功能编写，突出了 minireact 框架的核心特性：轻量级设计、模块化架构、流式响应支持和多语言模型集成。 [10](#0-9)  相比原有的 README，新版本更加结构化，增加了更多实用的代码示例和配置说明，同时保持了中文文档的特色。
 
-Wiki pages you might want to explore:
-- [Overview (cottagephilosopher/mini-react)](/wiki/cottagephilosopher/mini-react#1)
-- [Core Framework (cottagephilosopher/mini-react)](/wiki/cottagephilosopher/mini-react#2)
-- [Prediction and Language Model Integration (cottagephilosopher/mini-react)](/wiki/cottagephilosopher/mini-react#2.3)

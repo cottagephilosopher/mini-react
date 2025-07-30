@@ -8,7 +8,7 @@ import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from llm_hub import MultiLLMHub
-from miniReact import (
+from minireact import (
     ReAct, Signature, InputField, OutputField, Tool,
     streamify, streaming_response
 )

@@ -1,10 +1,10 @@
 import os
 import sys
 
-# 添加上级目录到模块搜索路径，以便导入miniReAct
+# 添加上级目录到模块搜索路径，以便导入minireact
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# 导入miniReAct
+# 导入minireact
 from llm_hub import MultiLLMHub
 
 

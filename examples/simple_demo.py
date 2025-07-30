@@ -1,15 +1,15 @@
 """
-简单示例程序，展示如何使用miniReAct框架创建一个计算器智能体
+简单示例程序，展示如何使用minireact框架创建一个计算器智能体
 """
 import os
 import sys
 from loguru import logger
 
 from llm_hub import MultiLLMHub
-# 添加上级目录到模块搜索路径，以便导入miniReAct
+# 添加上级目录到模块搜索路径，以便导入minireact
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from miniReact import ReAct,streamify,Signature,InputField,OutputField,streaming_response
+from minireact import ReAct,streamify,Signature,InputField,OutputField,streaming_response
 
 
 # 定义一些计算工具
@@ -95,7 +95,7 @@ async def process_stream_to_api(generator):
 
 async def stream_main():
     # 启用调试模式
-    import miniReact as mr
+    import minireact as mr
     mr.enable_debug()
     
     print("=== stream_main 开始 ===")
@@ -145,7 +145,7 @@ def test_config_only():
     print(f"ReAct智能体的API基址: {agent.lm.api_base if agent.lm else '无'}")
     
     # 检查全局配置
-    import miniReact as mr
+    import minireact as mr
     print(f"全局配置模型: {mr.get_model()}")
     print(f"全局配置API基址: {mr.lm_config.get_config('api_base')}")
     

@@ -8,11 +8,11 @@ from typing import Dict, Any, Optional
 import dotenv
 dotenv.load_dotenv(override=True)
 
-# 添加上级目录到模块搜索路径，以便导入miniReAct
+# 添加上级目录到模块搜索路径，以便导入minireact
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# 导入miniReAct
-import miniReact as mr
+# 导入minireact
+import minireact as mr
 
 class MultiLLMHub:
     """

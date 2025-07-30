@@ -190,9 +190,21 @@ class ReAct(Module):
                     # 如果所有重试都失败，才回退到最接近匹配或finish工具
                     if pred.next_tool_name not in self.tools:
                         import difflib
-                        closest_match = difflib.get_close_matches(pred.next_tool_name, available_tools, n=1)
-                        if closest_match:
-                            logger.info(f"使用最接近的工具: {closest_match[0]}")
+                        # 改进匹配逻辑：优先匹配包含连字符的完整名称
+                        closest_match = difflib.get_close_matches(pred.next_tool_name, available_tools, n=3)
+                        
+                        # 如果有完全匹配的（忽略大小写），使用它
+                        exact_match = None
+                        for tool in available_tools:
+                            if tool.lower() == pred.next_tool_name.lower():
+                                exact_match = tool
+                                break
+                        
+                        if exact_match:
+                            logger.info(f"找到完全匹配的工具（忽略大小写）: {exact_match}")
+                            pred.next_tool_name = exact_match
+                        elif closest_match:
+                            logger.info(f"使用最接近的工具: {closest_match[0]} (原始: {pred.next_tool_name})")
                             pred.next_tool_name = closest_match[0]
                         else:
                             logger.info("找不到接近的工具，使用finish工具")

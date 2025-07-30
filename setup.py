@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="miniReAct",
+    name="minireact",
     version="0.1.0",
     packages=find_packages(),
     install_requires=[
@@ -18,7 +18,7 @@ setup(
     description="轻量级 ReAct 智能体框架实现",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
-    url="https://github.com/longxtx/mini-react",
+    url="https://github.com/cottagephilosopher/mini-react",
     classifiers=[
         "Programming Language :: Python :: 3.12",
         "License :: OSI Approved :: MIT License",

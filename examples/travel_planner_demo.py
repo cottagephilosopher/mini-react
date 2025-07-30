@@ -1,5 +1,5 @@
 """
-旅行规划助手示例程序，展示如何使用miniReAct框架创建一个旅行规划智能体
+旅行规划助手示例程序，展示如何使用minireact框架创建一个旅行规划智能体
 """
 import os
 import sys
@@ -8,10 +8,10 @@ import random
 from datetime import datetime, timedelta
 # 设置语言模型配置
 from llm_hub import MultiLLMHub
-# 添加上级目录到模块搜索路径，以便导入miniReAct
+# 添加上级目录到模块搜索路径，以便导入minireact
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import miniReact as mr
+import minireact as mr
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')

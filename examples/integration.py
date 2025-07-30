@@ -10,8 +10,8 @@ from llm_hub import MultiLLMHub
 # sys.path.append(str(Path(__file__).parent.parent))
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import miniReact as mr
-from  miniReact.predict import prediction_cache
+import minireact as mr
+from  minireact.predict import prediction_cache
 
 def test_calculator_agent():
     """测试计算器智能体"""

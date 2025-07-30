@@ -1,5 +1,5 @@
 """
-miniReAct - 轻量级的 ReAct 框架实现
+minireact - 轻量级的 ReAct 框架实现
 
 该模块提供了 ReAct（Reasoning and Acting）智能体框架的简化实现。
 """

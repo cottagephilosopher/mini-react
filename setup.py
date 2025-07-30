@@ -1,8 +1,8 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="minireact",
-    version="0.1.0",
+    name="mini-react",
+    version="0.1.1",
     packages=find_packages(),
     install_requires=[
         "httpx>=0.23.0",   # HTTP客户端，用于调用API

@@ -16,6 +16,7 @@ test/
 *.mp3
 # 忽略 build 和 dist 文件夹
 build/
+*.egg-info/
 dist/
 hmr/
 .lsp/

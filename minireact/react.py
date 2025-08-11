@@ -372,25 +372,47 @@ class ReAct(Module):
                     logger.error(f"无法截断轨迹: {e}")
                     # 返回一个错误的Prediction对象
                     from .predict import Prediction
-                    return Prediction(next_thought=f"调用语言模型时出错: 无法截断轨迹: {e}", 
-                                    next_tool_name=f"调用语言模型时出错: 无法截断轨迹: {e}",
-                                    next_tool_args=f"调用语言模型时出错: 无法截断轨迹: {e}")
+                    return Prediction(
+                        next_thought="无法截断轨迹，任务结束", 
+                        next_tool_name="finish",
+                        next_tool_args={"reasoning": "轨迹过长且无法截断", "answer": "抱歉，请求过于复杂，请简化后重试。"}
+                    )
             except Exception as e:
                 logger.error(f"调用模块时发生错误: {e}")
                 import traceback
                 logger.error(f"完整异常信息: {traceback.format_exc()}")
+                # 检查是否是超时相关错误，如果是则尝试截断轨迹
+                error_msg = str(e).lower()
+                if any(keyword in error_msg for keyword in ['timeout', 'timed out', 'time out', '超时', '请求超时']):
+                    logger.warning(f"检测到超时错误，可能是轨迹过长，尝试截断: {e}")
+                    try:
+                        trajectory = self.truncate_trajectory(trajectory)
+                        continue  # 重试
+                    except ValueError as truncate_e:
+                        logger.error(f"超时且无法截断轨迹: {truncate_e}")
+                        from .predict import Prediction
+                        return Prediction(
+                            next_thought="处理超时且无法截断", 
+                            next_tool_name="finish",
+                            next_tool_args={"reasoning": "请求处理超时", "answer": "抱歉，请求处理时间过长，请稍后重试。"}
+                        )
+                
                 # 如果是最后一次尝试，返回一个错误的Prediction对象
                 if attempt == 2:  # 最后一次尝试
                     from .predict import Prediction
-                    return Prediction(next_thought=f"调用语言模型时出错: {e}", 
-                                    next_tool_name=f"调用语言模型时出错: {e}",
-                                    next_tool_args=f"调用语言模型时出错: {e}")
+                    return Prediction(
+                        next_thought="处理出错，任务结束", 
+                        next_tool_name="finish",
+                        next_tool_args={"reasoning": "系统处理出错", "answer": "抱歉，系统遇到错误，请稍后重试。"}
+                    )
         
         # 如果所有尝试都失败，返回一个错误的Prediction对象
         from .predict import Prediction
-        return Prediction(next_thought="调用语言模型时出错: 所有尝试都失败了", 
-                        next_tool_name="调用语言模型时出错: 所有尝试都失败了",
-                        next_tool_args="调用语言模型时出错: 所有尝试都失败了")
+        return Prediction(
+            next_thought="所有重试都失败，任务结束", 
+            next_tool_name="finish",
+            next_tool_args={"reasoning": "系统多次重试失败", "answer": "抱歉，系统遇到错误，请稍后重试。"}
+        )
     
     def truncate_trajectory(self, trajectory: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -413,11 +435,27 @@ class ReAct(Module):
                 idx = key.split("_")[1]
                 tool_calls.add(idx)
         
-        # 如果只有一个工具调用，无法截断
+        # 首先尝试压缩大的观察结果（如HTML表格）
+        for key in keys:
+            if key.startswith("observation_") and isinstance(trajectory[key], dict):
+                obs = trajectory[key]
+                if 'result_data' in obs and isinstance(obs['result_data'], dict):
+                    result_data = obs['result_data']
+                    # 压缩HTML表格数据
+                    if 'html_table' in result_data and len(str(result_data['html_table'])) > 1000:
+                        compressed_html = str(result_data['html_table'])[:500] + "... [HTML内容已截断]"
+                        obs['result_data']['html_table'] = compressed_html
+                        logger.info(f"已压缩观察结果中的HTML内容: {key}")
+                    # 压缩其他大型数据
+                    for data_key, data_value in result_data.items():
+                        if isinstance(data_value, str) and len(data_value) > 2000:
+                            result_data[data_key] = data_value[:1000] + "... [内容已截断]"
+                            logger.info(f"已压缩观察结果中的数据: {key}.{data_key}")
+        
+        # 如果只有一个工具调用，无法删除整个调用，但已压缩了内容
         if len(tool_calls) <= 1:
-            raise ValueError(
-                "轨迹过长导致你的提示超出了上下文窗口，但轨迹不能被截断，因为它只包含一个工具调用。"
-            )
+            logger.info("只有一个工具调用，已压缩观察结果内容")
+            return trajectory
         
         # 保留最近的工具调用，删除最早的一个
         earliest_idx = min(tool_calls)

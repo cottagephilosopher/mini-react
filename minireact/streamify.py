@@ -35,7 +35,7 @@ class ThoughtResponse(StreamResponse):
     def message(self,type:str="reasoning"):
         return json.dumps({
                 "type": type,
-                "content": "\n\n" + self.thought
+                "content": "\n\n 🔧 " + self.thought
             }, ensure_ascii=False) + "\n"
 
 

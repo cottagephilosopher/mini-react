@@ -252,59 +252,123 @@ class Predict(Module):
             content = response["content"]
             
             # 解析回答，提取输出字段
-            # 这里采用简单方法，假设模型按照要求返回了每个输出字段
-            # 在实际应用中，可能需要更复杂的解析逻辑
-            # 解析回答，提取输出字段
             outputs = {}
             
-            # 使用正则表达式提取字段
-            for field_name in self.signature.output_fields:
-                # 使用更健壮的正则表达式匹配字段
-                field_pattern = rf"{re.escape(field_name)}:(.*?)(?:\n\w+:|$)"
-                field_match = re.search(field_pattern, content, re.DOTALL)
+            # 首先检查是否是错误消息
+            if "调用语言模型时出错" in content or "请求超时" in content or "网络连接" in content:
+                logger.error(f"检测到LLM调用错误: {content}")
+                # 返回默认的错误处理结果
+                outputs = {
+                    "next_tool_name": "finish",
+                    "next_tool_args": {
+                        "reasoning": "系统遇到网络问题，请稍后重试",
+                        "answer": "抱歉，系统暂时无法处理您的请求，请稍后重试。"
+                    }
+                }
+                for field_name in self.signature.output_fields:
+                    if field_name == "reasoning":
+                        outputs[field_name] = "系统遇到网络问题"
+                    elif field_name == "answer":
+                        outputs[field_name] = "抱歉，系统暂时无法处理您的请求，请稍后重试。"
+                    elif field_name not in outputs:
+                        outputs[field_name] = content
+            # 检查是否是完整的工具调用格式文本（如日志显示的问题）
+            elif "思考：" in content and "工具：" in content and "参数：" in content:
+                logger.debug(f"检测到完整的工具调用格式，进行解析: {content[:200]}...")
                 
-                if field_match:
-                    value = field_match.group(1).strip()
+                # 提取工具名：寻找"工具："后的内容
+                tool_pattern = r'工具[:：]\s*([^\s\n]+)'
+                tool_match = re.search(tool_pattern, content)
+                
+                if tool_match:
+                    tool_name = tool_match.group(1).strip()
+                    outputs["next_tool_name"] = tool_name
+                    logger.debug(f"提取工具名: {tool_name}")
                     
-                    # 特殊处理next_tool_args字段，确保它是一个字典
-                    if field_name == "next_tool_args":
+                    # 提取参数：寻找"参数："后的JSON
+                    args_pattern = r'参数[:：]\s*(\{.*?\})'
+                    args_match = re.search(args_pattern, content, re.DOTALL)
+                    
+                    if args_match:
+                        args_text = args_match.group(1)
                         try:
-                            # 尝试从文本中提取JSON格式的参数
-                            json_pattern = r'\{.*\}'
-                            json_match = re.search(json_pattern, value, re.DOTALL)
-                            if json_match:
-                                json_str = json_match.group(0)
-                                value = json.loads(json_str)
-                            elif value.strip().startswith('{') and value.strip().endswith('}'):
-                                value = json.loads(value)
+                            tool_args = json.loads(args_text.strip())
+                            outputs["next_tool_args"] = tool_args
+                            logger.debug(f"提取工具参数: {tool_args}")
+                        except json.JSONDecodeError as e:
+                            logger.warning(f"JSON 解析失败: {args_text}, 错误: {e}")
+                            outputs["next_tool_args"] = {}
+                    else:
+                        outputs["next_tool_args"] = {}
+                
+                # 提取其他输出字段
+                for field_name in self.signature.output_fields:
+                    if field_name not in outputs:
+                        if field_name == "reasoning":
+                            # 提取"思考："后的内容
+                            thought_pattern = r'思考[:：]\s*([^\n]+)'
+                            thought_match = re.search(thought_pattern, content)
+                            if thought_match:
+                                outputs[field_name] = thought_match.group(1).strip()
                             else:
-                                # 如果无法提取JSON，创建一个空字典
-                                logger.warning(f"无法解析工具参数: {value}")
+                                outputs[field_name] = "正在处理..."
+                        elif field_name == "answer":
+                            # 对于answer字段，从参数中提取
+                            if "next_tool_args" in outputs and isinstance(outputs["next_tool_args"], dict):
+                                outputs[field_name] = outputs["next_tool_args"].get("answer", "正在处理...")
+                            else:
+                                outputs[field_name] = "正在处理..."
+                        else:
+                            outputs[field_name] = content
+            else:
+                # 使用原有的正则表达式提取字段逻辑
+                for field_name in self.signature.output_fields:
+                    # 使用更健壮的正则表达式匹配字段
+                    field_pattern = rf"{re.escape(field_name)}:(.*?)(?:\n\w+:|$)"
+                    field_match = re.search(field_pattern, content, re.DOTALL)
+                    
+                    if field_match:
+                        value = field_match.group(1).strip()
+                        
+                        # 特殊处理next_tool_args字段，确保它是一个字典
+                        if field_name == "next_tool_args":
+                            try:
+                                # 尝试从文本中提取JSON格式的参数
+                                json_pattern = r'\{.*\}'
+                                json_match = re.search(json_pattern, value, re.DOTALL)
+                                if json_match:
+                                    json_str = json_match.group(0)
+                                    value = json.loads(json_str)
+                                elif value.strip().startswith('{') and value.strip().endswith('}'):
+                                    value = json.loads(value)
+                                else:
+                                    # 如果无法提取JSON，创建一个空字典
+                                    logger.warning(f"无法解析工具参数: {value}")
+                                    value = {}
+                            except json.JSONDecodeError:
+                                logger.warning(f"无法解析工具参数为JSON: {value}")
                                 value = {}
-                        except json.JSONDecodeError:
-                            logger.warning(f"无法解析工具参数为JSON: {value}")
-                            value = {}
-                    
-                    # 特殊处理next_tool_name字段，确保它只是工具名称
-                    elif field_name == "next_tool_name":
-                        # 去除可能的额外字符
-                        value = value.strip()
-                        # 如果工具名被其他字符包围，如'search'或[search]
-                        if (value.startswith("'") and value.endswith("'")) or \
-                        (value.startswith('"') and value.endswith('"')) or \
-                        (value.startswith("[") and value.endswith("]")):
-                            value = value[1:-1].strip()
-                        # 尝试匹配工具名称（支持连字符和完整名称）
-                        # 首先尝试匹配完整的工具名称（包含连字符）
-                        tool_name_match = re.search(r'\b([a-zA-Z_][a-zA-Z0-9_-]+)\b', value)
-                        if tool_name_match:
-                            value = tool_name_match.group(1)
-                        logger.info(f"解析工具名称为: {value}")
-                    
-                    outputs[field_name] = value
-                else:
-                    # 如果找不到特定字段，使用整个内容
-                    outputs[field_name] = content
+                        
+                        # 特殊处理next_tool_name字段，确保它只是工具名称
+                        elif field_name == "next_tool_name":
+                            # 去除可能的额外字符
+                            value = value.strip()
+                            # 如果工具名被其他字符包围，如'search'或[search]
+                            if (value.startswith("'") and value.endswith("'")) or \
+                            (value.startswith('"') and value.endswith('"')) or \
+                            (value.startswith("[") and value.endswith("]")):
+                                value = value[1:-1].strip()
+                            # 尝试匹配工具名称（支持连字符和完整名称）
+                            # 首先尝试匹配完整的工具名称（包含连字符）
+                            tool_name_match = re.search(r'\b([a-zA-Z_][a-zA-Z0-9_-]+)\b', value)
+                            if tool_name_match:
+                                value = tool_name_match.group(1)
+                            logger.info(f"解析工具名称为: {value}")
+                        
+                        outputs[field_name] = value
+                    else:
+                        # 如果找不到特定字段，使用整个内容
+                        outputs[field_name] = content
             
             # 如果没有提取到任何字段，使用整个内容作为结果
             if not outputs and self.signature.output_fields:

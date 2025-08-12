@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mini-react"
+version = "0.1.2"
+description = "mini-react 轻量级的 ReAct（Reasoning and Acting）智能体框架"
+authors = [
+    { name="jiulang", email="thisgame@foxmail.com" }
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/cottagephilosopher/mini-react"
+
